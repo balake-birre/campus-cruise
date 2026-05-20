@@ -50,38 +50,35 @@
         });
 
         const busStops = [
-            
             { name: "Main Stop", coords: [-1.2876270641533296, 36.82438489890232] },
             { name: "Kenya Aeronautical College", coords: [-1.3187254575083802, 36.81660883019628] },
         
            
         ];
 
-        
-
         busStops.forEach(stop => {
             L.marker(stop.coords, { icon: stopIcon }).addTo(map).bindPopup(`<b>${stop.name}</b><br>Shuttle Stop`);
         });
 
-        // Manually tracing the street path via Langata Road / Aerodrome Road curves
-const streetWaypoints = [
-    [-1.28763, 36.82438], // Main Stop
-    [-1.29520, 36.82150], // Langata Road segment down
-    [-1.30450, 36.81880], // Continuing along Langata Road
-    [-1.31420, 36.81550], // Langata Road near T-Mall area
-    [-1.31872, 36.81660], // Kenya Aeronautical College Stop
-    [-1.31950, 36.81900], // Turning onto local access roads near Wilson entry
-    [-1.31500, 36.82200], // Heading back up local corridor
-    [-1.28763, 36.82438]  // Closing the loop back to Main Stop
-];
+// Tracing the actual road turns manually from Main Stop to Kenya Aeronautical College
+        const streetWaypoints = [
+            [-1.287627, 36.824384], // Main Stop
+            [-1.294100, 36.821900], // Heading down the main road corridor
+            [-1.302300, 36.819200], // Following the road alignment south
+            [-1.311500, 36.815900], // Approaching Langata Road junction zone
+            [-1.318725, 36.816608], // Kenya Aeronautical College Stop
+            [-1.319800, 36.818100], // Turning loop near airport gates
+            [-1.314500, 36.820500], // Heading back north along the parallel road
+            [-1.287627, 36.824384]  // Closing the loop back to Main Stop
+        ];
 
-// Draw the new street-following line on the map
-L.polyline(streetWaypoints, { 
-    color: '#007bff', 
-    weight: 5, 
-    opacity: 0.7, 
-    dashArray: '10, 10' 
-}).addTo(map);
+        // Draw the new line that follows the streets
+        L.polyline(streetWaypoints, { 
+            color: '#007bff', 
+            weight: 5, 
+            opacity: 0.7, 
+            dashArray: '10, 10' 
+        }).addTo(map);
 
         let shuttleMarker = null;
         const shuttleId = "shuttle_route_1";

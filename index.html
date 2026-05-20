@@ -50,11 +50,12 @@
         });
 
         const busStops = [
-            { name: "Main Gate Stop", coords: [-1.2910, 36.8210] },
-            { name: "Engineering Complex", coords: [-1.2925, 36.8215] },
-            { name: "University Library", coords: [-1.2935, 36.8230] },
-            { name: "Student Center & Mess", coords: [-1.2915, 36.8245] }
+            { name: "Main Stop", coords: [-1.2876270641533296, 36.82438489890232] },
+            { name: "Kenya Aeronautical College", coords: [-1.3187254575083802, 36.81660883019628] },
+        
+           
         ];
+
 
         busStops.forEach(stop => {
             L.marker(stop.coords, { icon: stopIcon }).addTo(map).bindPopup(`<b>${stop.name}</b><br>Shuttle Stop`);

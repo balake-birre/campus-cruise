@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CampusCruise - Driver Broadcast</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+</head>
+<body>
+    <div style="text-align: center; margin-top: 50px; font-family: sans-serif;">
+        <h2>CampusCruise Location Broadcast</h2>
+        <p id="status">Initializing GPS...</p>
+    </div>
+
+    <script>
+        // Paste your EXACT Firebase configuration keys here
+        const firebaseConfig = {
+            apiKey: "AIzaSyA7Rho0hFl757T4Rvl5tUgh0QSV7dGg2bw",
+            authDomain: "shuttle-tracker-4c18f.firebaseapp.com",
+            databaseURL: "https://shuttle-tracker-4c18f-default-rtdb.firebaseio.com", 
+            projectId: "shuttle-tracker-4c18f",
+            storageBucket: "shuttle-tracker-4c18f.firebasestorage.app",
+            messagingSenderId: "81039441975",
+            appId: "1:81039441975:web:076e4b0500d40619cd7952",
+            measurementId: "G-6ZT7T148YH"
+        };
+        
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        const shuttleId = "shuttle_route_1"; 
+
+        if ("geolocation" in navigator) {
+            navigator.geolocation.watchPosition(
+                (position) => {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    
+                    db.ref('shuttles/' + shuttleId).set({
+                        latitude: lat,
+                        longitude: lng,
+                        timestamp: Date.now()
+                    });
+
+                    document.getElementById("status").innerHTML = 
+                        `Broadcasting Location:<br>Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`;
+                },
+                (error) => {
+                    document.getElementById("status").innerText = "Error getting GPS: " + error.message;
+                },
+                { enableHighAccuracy: true, maximumAge: 0 }
+            );
+        } else {
+            document.getElementById("status").innerText = "Geolocation not supported.";
+        }
+    </script>
+</body>
+</html>

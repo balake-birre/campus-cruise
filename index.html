@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CampusCruise | Live Shuttle Tracker</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <style>
+        body { margin: 0; padding: 0; font-family: sans-serif; }
+        #map { height: 100vh; width: 100vw; }
+        .info-panel {
+            position: absolute; top: 10px; left: 10px; z-index: 1000;
+            background: white; padding: 15px; border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+    </style>
+</head>
+<body>
+    <div class="info-panel">
+        <h3 style="margin:0 0 5px 0;">CampusCruise Live</h3>
+        <p id="time-status" style="margin:0; font-size:12px; color:#555;">Waiting for live signal...</p>
+    </div>
+    <div id="map"></div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyA7Rho0hFl757T4Rvl5tUgh0QSV7dGg2bw",
+            authDomain: "shuttle-tracker-4c18f.firebaseapp.com",
+            databaseURL: "https://shuttle-tracker-4c18f-default-rtdb.firebaseio.com", 
+            projectId: "shuttle-tracker-4c18f",
+            storageBucket: "shuttle-tracker-4c18f.firebasestorage.app",
+            messagingSenderId: "81039441975",
+            appId: "1:81039441975:web:076e4b0500d40619cd7952",
+            measurementId: "G-6ZT7T148YH"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        const map = L.map('map').setView([-1.2921, 36.8219], 16);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        const stopIcon = L.divIcon({
+            html: `<div style="background-color: #007bff; width: 12px; height: 12px; border-radius: 50%; border: 2px white solid; box-shadow: 0 0 4px rgba(0,0,0,0.4);"></div>`,
+            className: 'custom-stop-icon', iconSize: [12, 12], iconAnchor: [6, 6]
+        });
+
+        const busStops = [
+            { name: "Main Gate Stop", coords: [-1.2910, 36.8210] },
+            { name: "Engineering Complex", coords: [-1.2925, 36.8215] },
+            { name: "University Library", coords: [-1.2935, 36.8230] },
+            { name: "Student Center & Mess", coords: [-1.2915, 36.8245] }
+        ];
+
+        busStops.forEach(stop => {
+            L.marker(stop.coords, { icon: stopIcon }).addTo(map).bindPopup(`<b>${stop.name}</b><br>Shuttle Stop`);
+        });
+
+        const routeCoordinates = busStops.map(stop => stop.coords);
+        routeCoordinates.push(busStops[0].coords); 
+        L.polyline(routeCoordinates, { color: '#007bff', weight: 5, opacity: 0.6, dashArray: '10, 10' }).addTo(map);
+
+        let shuttleMarker = null;
+        const shuttleId = "shuttle_route_1";
+        const shuttleIcon = L.divIcon({
+            html: `<div style="background-color: #28a745; width: 18px; height: 18px; border-radius: 50%; border: 3px white solid; box-shadow: 0 0 6px rgba(0,0,0,0.6);"></div>`,
+            className: 'custom-shuttle-icon', iconSize: [18, 18], iconAnchor: [9, 9]
+        });
+
+        db.ref('shuttles/' + shuttleId).on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                const lat = data.latitude;
+                const lng = data.longitude;
+                if (!shuttleMarker) {
+                    shuttleMarker = L.marker([lat, lng], { icon: shuttleIcon }).addTo(map).bindPopup("<b>Shuttle 1</b><br>Live").openPopup();
+                } else {
+                    shuttleMarker.setLatLng([lat, lng]);
+                }
+                document.getElementById("time-status").innerText = "Active • Last updated: " + new Date(data.timestamp).toLocaleTimeString();
+            }
+        });
+    </script>
+</body>
+</html>

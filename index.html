@@ -88,45 +88,44 @@
             color: '#007bff', weight: 5, opacity: 0.7, dashArray: '10, 10' 
         }).addTo(map);
 
-// --- 6. REAL-TIME DATA STREAM FROM OWNTRACKS ---
+// --- 6. REAL-TIME DATA STREAM FROM OWNTRACKS (SMART SCANNER) ---
         let shuttleMarker = null;
 
         db.ref('shuttles').on('value', (snapshot) => {
             const shuttlesData = snapshot.val();
             if (shuttlesData) {
-                let latestData = null;
-                
-                // Loop through the data folders to find the location values
+                let newestTimestamp = 0;
+                let finalLat = null;
+                let finalLng = null;
+
+                // Loop through every tracking log entry sent by the phone
                 Object.keys(shuttlesData).forEach(key => {
-                    // OwnTracks places location data directly under the generated key
-                    if (shuttlesData[key] && shuttlesData[key].lat) {
-                        latestData = shuttlesData[key];
+                    const record = shuttlesData[key];
+                    
+                    if (record && typeof record === 'object') {
+                        // Check if the coordinates and Unix timestamp are directly in this node
+                        if (record.lat && record.lon && record.tst) {
+                            if (record.tst > newestTimestamp) {
+                                newestTimestamp = record.tst;
+                                finalLat = record.lat;
+                                finalLng = record.lon;
+                            }
+                        }
                     }
                 });
 
-                // If the data is nested inside a 'data' wrap or a location array (iOS/Android variation)
-                if (!latestData) {
-                    Object.keys(shuttlesData).forEach(key => {
-                        if (shuttlesData[key].data) {
-                            latestData = shuttlesData[key].data;
-                        }
-                    });
-                }
-
-                if (latestData && latestData.lat && latestData.lon) {
-                    const lat = latestData.lat;
-                    const lng = latestData.lon;
-                    
+                // If a valid location packet was discovered, update the tracking frame
+                if (finalLat && finalLng) {
                     if (!shuttleMarker) {
-                        shuttleMarker = L.marker([lat, lng], { icon: shuttleIcon }).addTo(map)
+                        shuttleMarker = L.marker([finalLat, finalLng], { icon: shuttleIcon }).addTo(map)
                                          .bindPopup("<b>Campus Shuttle</b><br>Live Tracking").openPopup();
                     } else {
-                        shuttleMarker.setLatLng([lat, lng]);
+                        shuttleMarker.setLatLng([finalLat, finalLng]);
                     }
                     
-                    // Update timestamp display using OwnTracks 'tst' UNIX key
-                    const timestamp = latestData.tst ? new Date(latestData.tst * 1000) : new Date();
-                    document.getElementById("time-status").innerText = "Active • Last updated: " + timestamp.toLocaleTimeString();
+                    // Format the timestamp (OwnTracks 'tst' field is in seconds, JavaScript requires milliseconds)
+                    const updateTime = new Date(newestTimestamp * 1000);
+                    document.getElementById("time-status").innerText = "Active • Last updated: " + updateTime.toLocaleTimeString();
                 }
             }
         });

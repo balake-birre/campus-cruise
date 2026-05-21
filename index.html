@@ -88,34 +88,19 @@
             color: '#007bff', weight: 5, opacity: 0.7, dashArray: '10, 10' 
         }).addTo(map);
 
-// --- 6. DYNAMIC LIVE REAL-TIME DATA STREAM FROM OWNTRACKS ---
+// --- 6. GUARANTEED REAL-TIME STREAM ---
         let shuttleMarker = null;
 
-        db.ref('shuttles/live_bus').on('value', (snapshot) => {
-            const nestedData = snapshot.val();
-            
-            if (nestedData) {
-                let latestRecord = null;
-                let maxTimestamp = 0;
+        // Force Firebase to instantly serve ONLY the single newest record
+        db.ref('shuttles/live_bus').orderByKey().limitToLast(1).on('value', (snapshot) => {
+            snapshot.forEach((childSnapshot) => {
+                let latestRecord = childSnapshot.val();
 
-                // 1. Check if the data is wrapped inside nested random sub-folders
-                if (typeof nestedData === 'object' && !nestedData.lat) {
-                    Object.keys(nestedData).forEach(key => {
-                        const subRecord = nestedData[key];
-                        if (subRecord && subRecord.lat && subRecord.lon && subRecord.tst) {
-                            if (subRecord.tst > maxTimestamp) {
-                                maxTimestamp = subRecord.tst;
-                                latestRecord = subRecord;
-                            }
-                        }
-                    });
-                } else if (nestedData.lat && nestedData.lon) {
-                    // 2. Fallback if OwnTracks writes directly to the node
-                    latestRecord = nestedData;
-                    maxTimestamp = nestedData.tst || Math.floor(Date.now() / 1000);
+                // In case OwnTracks nests the data inside an array wrapper
+                if (Array.isArray(latestRecord)) {
+                    latestRecord = latestRecord[0];
                 }
 
-                // 3. Render or move the marker instantly if a record was discovered
                 if (latestRecord && latestRecord.lat && latestRecord.lon) {
                     const lat = latestRecord.lat;
                     const lng = latestRecord.lon;
@@ -127,11 +112,12 @@
                         shuttleMarker.setLatLng([lat, lng]);
                     }
                     
-                    // Format update clock UI text elements safely
+                    // Update clock (fallback to current computer time if OwnTracks clock is hidden)
+                    const maxTimestamp = latestRecord.tst || Math.floor(Date.now() / 1000);
                     const updateTime = new Date(maxTimestamp * 1000);
                     document.getElementById("time-status").innerText = "Active • Last updated: " + updateTime.toLocaleTimeString();
                 }
-            }
+            });
         });
     </script>
 </body>

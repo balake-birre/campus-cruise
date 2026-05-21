@@ -88,28 +88,49 @@
             color: '#007bff', weight: 5, opacity: 0.7, dashArray: '10, 10' 
         }).addTo(map);
 
-// --- 6. INSTANT REAL-TIME DATA STREAM ---
+// --- 6. DYNAMIC LIVE REAL-TIME DATA STREAM FROM OWNTRACKS ---
         let shuttleMarker = null;
 
         db.ref('shuttles/live_bus').on('value', (snapshot) => {
-            const data = snapshot.val();
+            const nestedData = snapshot.val();
             
-            if (data && data.lat && data.lon) {
-                const lat = data.lat;
-                const lng = data.lon;
-                
-                // 1. If the pin isn't on the map yet, create it
-                if (!shuttleMarker) {
-                    shuttleMarker = L.marker([lat, lng], { icon: shuttleIcon }).addTo(map)
-                                     .bindPopup("<b>Campus Shuttle</b><br>Live Tracking").openPopup();
-                } else {
-                    // 2. If it already exists, smoothly slide it to the new position!
-                    shuttleMarker.setLatLng([lat, lng]);
+            if (nestedData) {
+                let latestRecord = null;
+                let maxTimestamp = 0;
+
+                // 1. Check if the data is wrapped inside nested random sub-folders
+                if (typeof nestedData === 'object' && !nestedData.lat) {
+                    Object.keys(nestedData).forEach(key => {
+                        const subRecord = nestedData[key];
+                        if (subRecord && subRecord.lat && subRecord.lon && subRecord.tst) {
+                            if (subRecord.tst > maxTimestamp) {
+                                maxTimestamp = subRecord.tst;
+                                latestRecord = subRecord;
+                            }
+                        }
+                    });
+                } else if (nestedData.lat && nestedData.lon) {
+                    // 2. Fallback if OwnTracks writes directly to the node
+                    latestRecord = nestedData;
+                    maxTimestamp = nestedData.tst || Math.floor(Date.now() / 1000);
                 }
-                
-                // 3. Update the live clock panel instantly
-                const timestamp = data.tst ? new Date(data.tst * 1000) : new Date();
-                document.getElementById("time-status").innerText = "Active • Last updated: " + timestamp.toLocaleTimeString();
+
+                // 3. Render or move the marker instantly if a record was discovered
+                if (latestRecord && latestRecord.lat && latestRecord.lon) {
+                    const lat = latestRecord.lat;
+                    const lng = latestRecord.lon;
+                    
+                    if (!shuttleMarker) {
+                        shuttleMarker = L.marker([lat, lng], { icon: shuttleIcon }).addTo(map)
+                                         .bindPopup("<b>Campus Shuttle</b><br>Live Tracking").openPopup();
+                    } else {
+                        shuttleMarker.setLatLng([lat, lng]);
+                    }
+                    
+                    // Format update clock UI text elements safely
+                    const updateTime = new Date(maxTimestamp * 1000);
+                    document.getElementById("time-status").innerText = "Active • Last updated: " + updateTime.toLocaleTimeString();
+                }
             }
         });
     </script>

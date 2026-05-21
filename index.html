@@ -88,46 +88,30 @@
             color: '#007bff', weight: 5, opacity: 0.7, dashArray: '10, 10' 
         }).addTo(map);
 
-// --- 6. REAL-TIME DATA STREAM FROM OWNTRACKS (SMART SCANNER) ---
+// --- 6. INSTANT REAL-TIME DATA STREAM ---
         let shuttleMarker = null;
 
-        db.ref('shuttles').on('value', (snapshot) => {
-            const shuttlesData = snapshot.val();
-            if (shuttlesData) {
-                let newestTimestamp = 0;
-                let finalLat = null;
-                let finalLng = null;
-
-                // Loop through every tracking log entry sent by the phone
-                Object.keys(shuttlesData).forEach(key => {
-                    const record = shuttlesData[key];
-                    
-                    if (record && typeof record === 'object') {
-                        // Check if the coordinates and Unix timestamp are directly in this node
-                        if (record.lat && record.lon && record.tst) {
-                            if (record.tst > newestTimestamp) {
-                                newestTimestamp = record.tst;
-                                finalLat = record.lat;
-                                finalLng = record.lon;
-                            }
-                        }
-                    }
-                });
-
-                // If a valid location packet was discovered, update the tracking frame
-                if (finalLat && finalLng) {
-                    if (!shuttleMarker) {
-                        shuttleMarker = L.marker([finalLat, finalLng], { icon: shuttleIcon }).addTo(map)
-                                         .bindPopup("<b>Campus Shuttle</b><br>Live Tracking").openPopup();
-                    } else {
-                        shuttleMarker.setLatLng([finalLat, finalLng]);
-                    }
-                    
-                    // Format the timestamp (OwnTracks 'tst' field is in seconds, JavaScript requires milliseconds)
-                    const updateTime = new Date(newestTimestamp * 1000);
-                    document.getElementById("time-status").innerText = "Active • Last updated: " + updateTime.toLocaleTimeString();
+        db.ref('shuttles/live_bus').on('value', (snapshot) => {
+            const data = snapshot.val();
+            
+            if (data && data.lat && data.lon) {
+                const lat = data.lat;
+                const lng = data.lon;
+                
+                // 1. If the pin isn't on the map yet, create it
+                if (!shuttleMarker) {
+                    shuttleMarker = L.marker([lat, lng], { icon: shuttleIcon }).addTo(map)
+                                     .bindPopup("<b>Campus Shuttle</b><br>Live Tracking").openPopup();
+                } else {
+                    // 2. If it already exists, smoothly slide it to the new position!
+                    shuttleMarker.setLatLng([lat, lng]);
                 }
+                
+                // 3. Update the live clock panel instantly
+                const timestamp = data.tst ? new Date(data.tst * 1000) : new Date();
+                document.getElementById("time-status").innerText = "Active • Last updated: " + timestamp.toLocaleTimeString();
             }
+        });
         });
     </script>
 </body>

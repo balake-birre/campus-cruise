@@ -88,27 +88,44 @@
             color: '#007bff', weight: 5, opacity: 0.7, dashArray: '10, 10' 
         }).addTo(map);
 
-        // --- 6. REAL-TIME DATA STREAM FROM OWNTRACKS ---
+// --- 6. REAL-TIME DATA STREAM FROM OWNTRACKS ---
         let shuttleMarker = null;
-        const shuttleId = "shuttle_route_1";
 
-        db.ref('shuttles/' + shuttleId).on('value', (snapshot) => {
-            const data = snapshot.val();
-            if (data) {
-                // OwnTracks sends shorter names: 'lat' and 'lon'
-                const lat = data.lat;
-                const lng = data.lon;
+        db.ref('shuttles').on('value', (snapshot) => {
+            const shuttlesData = snapshot.val();
+            if (shuttlesData) {
+                let latestData = null;
                 
-                if (lat && lng) {
+                // Loop through the data folders to find the location values
+                Object.keys(shuttlesData).forEach(key => {
+                    // OwnTracks places location data directly under the generated key
+                    if (shuttlesData[key] && shuttlesData[key].lat) {
+                        latestData = shuttlesData[key];
+                    }
+                });
+
+                // If the data is nested inside a 'data' wrap or a location array (iOS/Android variation)
+                if (!latestData) {
+                    Object.keys(shuttlesData).forEach(key => {
+                        if (shuttlesData[key].data) {
+                            latestData = shuttlesData[key].data;
+                        }
+                    });
+                }
+
+                if (latestData && latestData.lat && latestData.lon) {
+                    const lat = latestData.lat;
+                    const lng = latestData.lon;
+                    
                     if (!shuttleMarker) {
                         shuttleMarker = L.marker([lat, lng], { icon: shuttleIcon }).addTo(map)
-                                         .bindPopup("<b>Shuttle 1</b><br>Live").openPopup();
+                                         .bindPopup("<b>Campus Shuttle</b><br>Live Tracking").openPopup();
                     } else {
                         shuttleMarker.setLatLng([lat, lng]);
                     }
                     
-                    // Format the background timestamp update
-                    const timestamp = data.tst ? new Date(data.tst * 1000) : new Date();
+                    // Update timestamp display using OwnTracks 'tst' UNIX key
+                    const timestamp = latestData.tst ? new Date(latestData.tst * 1000) : new Date();
                     document.getElementById("time-status").innerText = "Active • Last updated: " + timestamp.toLocaleTimeString();
                 }
             }

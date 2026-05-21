@@ -39,7 +39,8 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        const map = L.map('map').setView([-1.2921, 36.8219], 16);
+
+        const map = L.map('map').setView([-1.318725, 36.816608], 16);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors'
         }).addTo(map);
@@ -60,19 +61,23 @@
             L.marker(stop.coords, { icon: stopIcon }).addTo(map).bindPopup(`<b>${stop.name}</b><br>Shuttle Stop`);
         });
 
-// Tracing the actual road turns manually from Main Stop to Kenya Aeronautical College
+// Tracing a clean, street-following loop around the Wilson Airport/Langata area
         const streetWaypoints = [
-            [-1.287627, 36.824384], // Main Stop
-            [-1.294100, 36.821900], // Heading down the main road corridor
-            [-1.302300, 36.819200], // Following the road alignment south
-            [-1.311500, 36.815900], // Approaching Langata Road junction zone
-            [-1.318725, 36.816608], // Kenya Aeronautical College Stop
-            [-1.319800, 36.818100], // Turning loop near airport gates
-            [-1.314500, 36.820500], // Heading back north along the parallel road
-            [-1.287627, 36.824384]  // Closing the loop back to Main Stop
+            [-1.318725, 36.816608], // Start: Kenya Aeronautical College Stop
+            [-1.316800, 36.815500], // Moving along Langata Road heading North-East
+            [-1.314200, 36.816900], // Passing near T-Mall Junction
+            [-1.311500, 36.819800], // Curving along Aerodrome Road
+            [-1.315000, 36.822000], // Heading down the eastern perimeter road
+            [-1.319500, 36.819000], // Turning onto the local airport access street
+            [-1.320500, 36.817200], // Rounding the terminal access loop
+            ]; // This is your existing line 72
+
+        // 👇 PASTE THIS EXACTLY ON LINE 73 TO DRAW THE PATH 👇
+        L.polyline(streetWaypoints, { color: '#007bff', weight: 5, opacity: 0.7, dashArray: '10, 10' }).addTo(map);
+            [-1.318725, 36.816608]  // Back to Kenya Aeronautical College Stop
         ];
 
-        // Draw the new line that follows the streets
+        // Draw the clean route line on the map
         L.polyline(streetWaypoints, { 
             color: '#007bff', 
             weight: 5, 
@@ -90,8 +95,8 @@
         db.ref('shuttles/' + shuttleId).on('value', (snapshot) => {
             const data = snapshot.val();
             if (data) {
-                const lat = data.latitude;
-                const lng = data.longitude;
+                const lat = data.lat;
+                const lng = data.lon;
                 if (!shuttleMarker) {
                     shuttleMarker = L.marker([lat, lng], { icon: shuttleIcon }).addTo(map).bindPopup("<b>Shuttle 1</b><br>Live").openPopup();
                 } else {

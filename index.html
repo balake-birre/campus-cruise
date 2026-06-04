@@ -34,6 +34,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
     <script>
+        // Firebase Configuration
         const firebaseConfig = { databaseURL: "https://shuttle-tracker-4c18f-default-rtdb.firebaseio.com" };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
@@ -41,21 +42,23 @@
         // Unique ID generated for this session's driver broadcast
         const myUniqueId = "student_" + Math.random().toString(36).substr(2, 9);
 
-        // Center map initially around college area
+        // Center map initially around college area coordinates
         const map = L.map('map').setView([-1.3193, 36.8162], 15);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-        // Icons
+        // Custom Graphics Icons
         const shuttleIcon = L.icon({
-            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
-            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-            iconSize: [25, 41], iconAnchor: [12, 41]
+            iconUrl: 'https://img.icons8.com/color/96/bus.png',
+            iconSize: [45, 45],
+            iconAnchor: [22, 22],
+            popupAnchor: [0, -20]
         });
 
         const mySelfIcon = L.icon({
-            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
-            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-            iconSize: [25, 41], iconAnchor: [12, 41]
+            iconUrl: 'https://img.icons8.com/color/96/student-male.png',
+            iconSize: [42, 42],
+            iconAnchor: [21, 21],
+            popupAnchor: [0, -18]
         });
 
         let shuttleMarker = null;
@@ -64,13 +67,13 @@
         let currentLat = null;
         let currentLon = null;
 
-        // 1. AUTOMATICALLY TRACK THE STUDENT LOCALLY ON LOAD
+        // 1. AUTOMATICALLY TRACK THE STUDENT LOCALLY ON PAGE LOAD
         if (navigator.geolocation) {
             navigator.geolocation.watchPosition((position) => {
                 currentLat = position.coords.latitude;
                 currentLon = position.coords.longitude;
 
-                // Instantly display or update the student's own Blue Pin
+                // Instantly display or update the student's personal Avatar Marker
                 if (!mySelfMarker) {
                     mySelfMarker = L.marker([currentLat, currentLon], { icon: mySelfIcon }).addTo(map)
                                     .bindPopup("<b>You Are Here</b>").openPopup();
@@ -78,19 +81,19 @@
                     mySelfMarker.setLatLng([currentLat, currentLon]);
                 }
 
-                // If the broadcast toggle is ON, stream these coordinates straight to the driver
+                // If broadcasting is toggled ON, continuously stream these coordinates to the driver
                 if (isBroadcasting) {
                     db.ref('students/' + myUniqueId).set({
                         lat: currentLat,
                         lon: currentLon
                     });
                 }
-            }, (err) => { console.error("Local GPS Error: ", err); }, { enableHighAccuracy: true });
+            }, (err) => { console.error("Local GPS Access Error: ", err); }, { enableHighAccuracy: true });
         } else {
             alert("GPS services are not supported by this browser.");
         }
 
-        // 2. LISTEN TO SHUTTLE POSITION
+        // 2. LISTEN TO SHUTTLE POSITION STREAM
         db.ref('shuttles/live_bus').on('value', (snapshot) => {
             const data = snapshot.val();
             if (data && data.lat && data.lon) {
@@ -110,11 +113,11 @@
             }
         });
 
-        // 3. TOGGLE BROADCASTING TO FIREBASE FOR THE DRIVER
+        // 3. TOGGLE BROADCAST DATA PACKETS TO THE DRIVER NODE
         function toggleDriverBroadcast() {
             if (!isBroadcasting) {
                 if (currentLat && currentLon) {
-                    // Send current coordinates to driver database path immediately
+                    // Send current coordinates to driver's data view immediately
                     db.ref('students/' + myUniqueId).set({
                         lat: currentLat,
                         lon: currentLon
@@ -135,7 +138,7 @@
             isBroadcasting = false;
         }
 
-        // Clear node completely if student terminates tab session
+        // Safety routine: Clear data path node if student closes the browser window/tab completely
         window.addEventListener('beforeunload', () => {
             db.ref('students/' + myUniqueId).remove();
         });

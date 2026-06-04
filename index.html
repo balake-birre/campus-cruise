@@ -24,7 +24,7 @@
     <div class="status-panel">
         <h1>CampusCruise Live</h1>
         <p id="time-status">Shuttle is currently offline.</p>
-        <button id="share-btn" class="student-toggle" onclick="toggleStudentShare()">📍 Share My Position with Driver</button>
+        <button id="share-btn" class="student-toggle" onclick="toggleDriverBroadcast()">📍 Broadcast My Location to Driver</button>
     </div>
 
     <div id="map"></div>
@@ -38,9 +38,10 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // Unique ID for this specific student session
+        // Unique ID generated for this session's driver broadcast
         const myUniqueId = "student_" + Math.random().toString(36).substr(2, 9);
 
+        // Center map initially around college area
         const map = L.map('map').setView([-1.3193, 36.8162], 15);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
@@ -58,11 +59,38 @@
         });
 
         let shuttleMarker = null;
-        let mySelfMarker = null; // Local marker for this student only
-        let studentWatchId = null;
-        let isSharing = false;
+        let mySelfMarker = null; 
+        let isBroadcasting = false;
+        let currentLat = null;
+        let currentLon = null;
 
-        // 1. LISTEN TO SHUTTLE
+        // 1. AUTOMATICALLY TRACK THE STUDENT LOCALLY ON LOAD
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition((position) => {
+                currentLat = position.coords.latitude;
+                currentLon = position.coords.longitude;
+
+                // Instantly display or update the student's own Blue Pin
+                if (!mySelfMarker) {
+                    mySelfMarker = L.marker([currentLat, currentLon], { icon: mySelfIcon }).addTo(map)
+                                    .bindPopup("<b>You Are Here</b>").openPopup();
+                } else {
+                    mySelfMarker.setLatLng([currentLat, currentLon]);
+                }
+
+                // If the broadcast toggle is ON, stream these coordinates straight to the driver
+                if (isBroadcasting) {
+                    db.ref('students/' + myUniqueId).set({
+                        lat: currentLat,
+                        lon: currentLon
+                    });
+                }
+            }, (err) => { console.error("Local GPS Error: ", err); }, { enableHighAccuracy: true });
+        } else {
+            alert("GPS services are not supported by this browser.");
+        }
+
+        // 2. LISTEN TO SHUTTLE POSITION
         db.ref('shuttles/live_bus').on('value', (snapshot) => {
             const data = snapshot.val();
             if (data && data.lat && data.lon) {
@@ -82,57 +110,34 @@
             }
         });
 
-        // 2. TOGGLE SHARING POSITION & SHOW SELF ON LOCAL MAP
-        function toggleStudentShare() {
-            if (!isSharing) {
-                if (!navigator.geolocation) return alert("GPS not available");
-
-                studentWatchId = navigator.geolocation.watchPosition((position) => {
-                    const myLat = position.coords.latitude;
-                    const myLon = position.coords.longitude;
-
-                    // Send coordinates to Firebase (Only the driver reads this data path)
+        // 3. TOGGLE BROADCASTING TO FIREBASE FOR THE DRIVER
+        function toggleDriverBroadcast() {
+            if (!isBroadcasting) {
+                if (currentLat && currentLon) {
+                    // Send current coordinates to driver database path immediately
                     db.ref('students/' + myUniqueId).set({
-                        lat: myLat,
-                        lon: myLon
+                        lat: currentLat,
+                        lon: currentLon
                     });
-
-                    // Show the student their own position on their own screen
-                    if (!mySelfMarker) {
-                        mySelfMarker = L.marker([myLat, myLon], { icon: mySelfIcon }).addTo(map)
-                                        .bindPopup("<b>You Are Here</b>").openPopup();
-                    } else {
-                        mySelfMarker.setLatLng([myLat, myLon]);
-                    }
-
-                }, (err) => { console.log(err); }, { enableHighAccuracy: true });
-
-                document.getElementById('share-btn').innerText = "🛑 Stop Sharing Location";
+                }
+                document.getElementById('share-btn').innerText = "🛑 Stop Broadcasting Location";
                 document.getElementById('share-btn').classList.add('sharing-active');
-                isSharing = true;
+                isBroadcasting = true;
             } else {
-                stopSharing();
+                stopBroadcasting();
             }
         }
 
-        function stopSharing() {
-            if (studentWatchId) navigator.geolocation.clearWatch(studentWatchId);
+        function stopBroadcasting() {
             db.ref('students/' + myUniqueId).remove();
-            
-            // Remove their own pin from their map when they stop sharing
-            if (mySelfMarker) {
-                map.removeLayer(mySelfMarker);
-                mySelfMarker = null;
-            }
-
-            document.getElementById('share-btn').innerText = "📍 Share My Position with Driver";
+            document.getElementById('share-btn').innerText = "📍 Broadcast My Location to Driver";
             document.getElementById('share-btn').classList.remove('sharing-active');
-            isSharing = false;
+            isBroadcasting = false;
         }
 
-        // Clean up database if student closes tab completely
+        // Clear node completely if student terminates tab session
         window.addEventListener('beforeunload', () => {
-            db.ref('students/' + myUniqueId).remove(); 
+            db.ref('students/' + myUniqueId).remove();
         });
     </script>
 </body>

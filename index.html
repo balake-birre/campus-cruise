@@ -23,7 +23,7 @@
 
     <div class="status-panel">
         <h1>CampusCruise Live</h1>
-        <p id="time-status">Locating shuttle and your position...</p>
+        <p id="time-status">Determining your exact location...</p>
         <button id="share-btn" class="student-toggle" onclick="toggleDriverBroadcast()">📍 Broadcast My Location to Driver</button>
     </div>
 
@@ -34,19 +34,14 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
     <script>
-        // Firebase Configuration
-        const firebaseConfig = { databaseURL: "https://shuttle-tracker-4c18f-default-rtdb.firebaseio.com" };
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.database();
+        // No Firebase necessary for this simplified overlapping test file.
+        // It relies entirely on your single device's local geolocation feed.
 
-        // Unique session ID for driver broadcast
-        const myUniqueId = "student_" + Math.random().toString(36).substr(2, 9);
-
-        // Initialize map
+        // Initialize map centered around college area coordinates
         const map = L.map('map').setView([-1.3193, 36.8162], 15);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-        // CLASSIC PIN ICONS (Updated Colors)
+        // Custom Graphics Icons (Matches your image format and color requests)
         const studentIcon = L.icon({
             iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png', // RED for student
             shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
@@ -65,107 +60,63 @@
             shadowSize: [41, 41]
         });
 
-        let shuttleMarker = null;
-        let mySelfMarker = null; 
+        let shuttleMarker = null; // Blue Pin (Bus)
+        let mySelfMarker = null;  // Red Pin (User)
         
+        // This button is preserved but has no function in this simplified file.
         let isBroadcasting = false;
         let currentLat = null;
         let currentLon = null;
 
-        // Auto-adjust camera view to frame both pins perfectly on screen together
+        // SMART FUNCTION: Auto-adjust map view to frame both markers perfectly on screen together
         function autoFitBothMarkers() {
             if (shuttleMarker && mySelfMarker) {
                 const bounds = L.latLngBounds([
                     shuttleMarker.getLatLng(),
                     mySelfMarker.getLatLng()
                 ]);
+                // Adds 50px padding around the edges so icons don't hit the screen borders
                 map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
             }
         }
 
-        // GPS STREAM 1: AUTOMATIC LOCAL STUDENT TRACKING (RED PIN)
+        // CONSOLIDATED GPS STREAM: AUTOMATIC SINGLE-DEVICE TRACKING
         if (navigator.geolocation) {
             navigator.geolocation.watchPosition((position) => {
                 currentLat = position.coords.latitude;
                 currentLon = position.coords.longitude;
 
-                // Create or update the Red Student Pin on the map
+                // 1. Plot or update the Blue Shuttle Marker (Bus) first, so it's lower.
+                if (!shuttleMarker) {
+                    shuttleMarker = L.marker([currentLat, currentLon], { icon: shuttleIcon }).addTo(map)
+                                    .bindPopup("<b>Shuttle Bus</b>").openPopup();
+                } else {
+                    shuttleMarker.setLatLng([currentLat, currentLon]);
+                }
+
+                // 2. Plot or update the Red Student Marker (User) second, and give it a higher z-index to stay on top.
                 if (!mySelfMarker) {
-                    mySelfMarker = L.marker([currentLat, currentLon], { icon: studentIcon }).addTo(map)
+                    mySelfMarker = L.marker([currentLat, currentLon], { icon: studentIcon, zIndexOffset: 1000 }).addTo(map)
                                     .bindPopup("<b>You Are Here</b>").openPopup();
                 } else {
                     mySelfMarker.setLatLng([currentLat, currentLon]);
                 }
 
-                // Run auto-framing layout check
+                // Run auto-framing routine
                 autoFitBothMarkers();
 
-                // Stream variables to Firebase if broadcast switch is active
-                if (isBroadcasting) {
-                    db.ref('students/' + myUniqueId).set({
-                        lat: currentLat,
-                        lon: currentLon
-                    });
-                }
-            }, (err) => { console.error("GPS Error: ", err); }, { enableHighAccuracy: true });
+                const timestamp = new Date();
+                document.getElementById("time-status").innerText = "Active • Both Pins at: " + timestamp.toLocaleTimeString();
+
+            }, (err) => { console.error("GPS Access Error: ", err); }, { enableHighAccuracy: true });
         } else {
             alert("GPS services are not supported by this browser.");
         }
 
-        // GPS STREAM 2: LIVE FIREBASE SHUTTLE TRACKING (BLUE PIN)
-        db.ref('shuttles/live_bus').on('value', (snapshot) => {
-            const data = snapshot.val();
-            if (data && data.lat && data.lon) {
-                const lat = data.lat;
-                const lng = data.lon;
-                
-                // Create or update the Blue Shuttle Pin on the map
-                if (!shuttleMarker) {
-                    shuttleMarker = L.marker([lat, lng], { icon: shuttleIcon }).addTo(map)
-                                    .bindPopup("<b>Shuttle Bus</b>");
-                } else {
-                    shuttleMarker.setLatLng([lat, lng]);
-                }
-
-                // Run auto-framing layout check
-                autoFitBothMarkers();
-
-                const timestamp = data.tst ? new Date(data.tst * 1000) : new Date();
-                document.getElementById("time-status").innerText = "Bus Active • Updated: " + timestamp.toLocaleTimeString();
-            } else {
-                document.getElementById("time-status").innerText = "Shuttle is currently offline.";
-                if (shuttleMarker) { map.removeLayer(shuttleMarker); shuttleMarker = null; }
-            }
-        });
-
-        // BROADCAST INTERACTION LOGIC
+        // The button has no function for this simplified illustrative file.
         function toggleDriverBroadcast() {
-            if (!isBroadcasting) {
-                if (currentLat && currentLon) {
-                    db.ref('students/' + myUniqueId).set({
-                        lat: currentLat,
-                        lon: currentLon
-                    });
-                }
-                document.getElementById('share-btn').innerText = "🛑 Stop Broadcasting Location";
-                document.getElementById('share-btn').classList.add('sharing-active');
-                isBroadcasting = true;
-            } else {
-                stopBroadcasting();
-            }
+             // Broadcast toggle interaction would be empty.
         }
-
-        function stopBroadcasting() {
-            db.ref('students/' + myUniqueId).remove();
-            document.getElementById('share-btn').innerText = "📍 Broadcast My Location to Driver";
-            document.getElementById('share-btn').classList.remove('sharing-active');
-            isBroadcasting = false;
-        }
-
-        // Wipe data node instantly if user completely exits or terminates the tab session
-        window.addEventListener('beforeunload', () => {
-            db.ref('students/' + myUniqueId).remove();
-        });
     </script>
 </body>
 </html>

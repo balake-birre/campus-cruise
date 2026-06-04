@@ -3,55 +3,89 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CampusCruise - Driver Broadcast</title>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <title>CampusCruise - Driver Console</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; background: #f4f6f9; padding: 40px 20px; }
+        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); max-width: 400px; margin: 0 auto; }
+        button { background: #28a745; color: white; border: none; padding: 15px 30px; font-size: 18px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; margin-top: 20px; }
+        button:disabled { background: #ccc; }
+        .status { margin-top: 20px; font-size: 16px; color: #555; font-weight: bold; }
+        .offline-btn { background: #dc3545; margin-top: 10px; }
+    </style>
 </head>
 <body>
-    <div style="text-align: center; margin-top: 50px; font-family: sans-serif;">
-        <h2>CampusCruise Location Broadcast</h2>
-        <p id="status">Initializing GPS...</p>
+
+    <div class="card">
+        <h2>Driver Control Panel</h2>
+        <p>Tap below to start broadcasting the shuttle location to students.</p>
+        
+        <button id="start-btn" onclick="startTracking()">📡 Start Journey</button>
+        <button id="stop-btn" class="offline-btn" onclick="stopTracking()" style="display:none;">🛑 End Journey</button>
+        
+        <div id="status" class="status">Status: Offline</div>
     </div>
 
     <script>
-        // Paste your EXACT Firebase configuration keys here
+        // Firebase Setup
         const firebaseConfig = {
-            apiKey: "AIzaSyA7Rho0hFl757T4Rvl5tUgh0QSV7dGg2bw",
-            authDomain: "shuttle-tracker-4c18f.firebaseapp.com",
-            databaseURL: "https://shuttle-tracker-4c18f-default-rtdb.firebaseio.com", 
-            projectId: "shuttle-tracker-4c18f",
-            storageBucket: "shuttle-tracker-4c18f.firebasestorage.app",
-            messagingSenderId: "81039441975",
-            appId: "1:81039441975:web:076e4b0500d40619cd7952",
-            measurementId: "G-6ZT7T148YH"
+            databaseURL: "https://shuttle-tracker-4c18f-default-rtdb.firebaseio.com"
         };
-        
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
-        const shuttleId = "shuttle_route_1"; 
 
-        if ("geolocation" in navigator) {
-            navigator.geolocation.watchPosition(
-                (position) => {
-                    const lat = position.coords.latitude;
-                    const lng = position.coords.longitude;
-                    
-                    db.ref('shuttles/' + shuttleId).set({
-                        latitude: lat,
-                        longitude: lng,
-                        timestamp: Date.now()
-                    });
+        let watchId = null;
 
-                    document.getElementById("status").innerHTML = 
-                        `Broadcasting Location:<br>Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`;
-                },
-                (error) => {
-                    document.getElementById("status").innerText = "Error getting GPS: " + error.message;
-                },
-                { enableHighAccuracy: true, maximumAge: 0 }
-            );
-        } else {
-            document.getElementById("status").innerText = "Geolocation not supported.";
+        function startTracking() {
+            if (!navigator.geolocation) {
+                document.getElementById('status').innerText = "Error: GPS not supported on this phone.";
+                return;
+            }
+
+            document.getElementById('start-btn').disabled = true;
+            document.getElementById('start-btn').innerText = "Connecting GPS...";
+
+            // Watch the phone's movement using native browser location services
+            watchId = navigator.geolocation.watchPosition((position) => {
+                const lat = position.coords.latitude;
+                const lon = position.coords.longitude;
+
+                // Send a clean, simple data package straight to Firebase
+                db.ref('shuttles/live_bus').set({
+                    lat: lat,
+                    lon: lon,
+                    tst: Math.floor(Date.now() / 1000)
+                }).then(() => {
+                    document.getElementById('status').innerHTML = `🟢 Broadcasting Live!<br><small>Lat: ${lat.toFixed(4)}, Lon: ${lon.toFixed(4)}</small>`;
+                    document.getElementById('start-btn').style.display = "none";
+                    document.getElementById('stop-btn').style.display = "block";
+                }).catch((err) => {
+                    document.getElementById('status').innerText = "Firebase Error: " + err.message;
+                });
+
+            }, (error) => {
+                document.getElementById('status').innerText = "GPS Error: " + error.message;
+                document.getElementById('start-btn').disabled = false;
+                document.getElementById('start-btn').innerText = "📡 Start Journey";
+            }, {
+                enableHighAccuracy: true, // Forces phone to use precise satellite GPS instead of generic cell towers
+                maximumAge: 0
+            });
+        }
+
+        function stopTracking() {
+            if (watchId) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+            }
+            // Let students know the shuttle is offline
+            db.ref('shuttles/live_bus').remove();
+            document.getElementById('status').innerText = "Status: Offline (Journey Ended)";
+            document.getElementById('start-btn').style.display = "block";
+            document.getElementById('start-btn').disabled = false;
+            document.getElementById('start-btn').innerText = "📡 Start Journey";
+            document.getElementById('stop-btn').style.display = "none";
         }
     </script>
 </body>

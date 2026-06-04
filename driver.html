@@ -3,29 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CampusCruise - Driver Map Console</title>
+    <title>CampusCruise - Driver Navigation</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body, html { margin: 0; padding: 0; height: 100%; font-family: Arial, sans-serif; }
         #map { height: 100%; width: 100%; }
-        .control-panel {
+        
+        /* Custom Driver Navigation Panel matching your screenshot */
+        .driver-panel {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: white; padding: 15px; border-radius: 8px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.2); max-width: 280px;
+            background: white; padding: 20px; border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.15); max-width: 300px;
         }
-        button { background: #28a745; color: white; border: none; padding: 12px; font-size: 16px; border-radius: 6px; cursor: pointer; width: 100%; font-weight: bold; margin-top: 10px; }
-        .stop-btn { background: #dc3545; }
-        .status { font-size: 13px; color: #555; margin-top: 8px; font-weight: bold; }
+        .driver-panel h2 { margin: 0 0 10px 0; font-size: 20px; color: #111; font-weight: bold; }
+        .driver-panel p { margin: 0 0 15px 0; font-size: 13px; color: #666; line-height: 1.4; }
+        
+        .end-journey-btn { 
+            background: #dc3545; color: white; border: none; padding: 12px; 
+            font-weight: bold; font-size: 15px; border-radius: 8px; width: 100%; 
+            cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+            margin-bottom: 12px; transition: background 0.2s;
+        }
+        .end-journey-btn:hover { background: #bd2130; }
+        
+        .status-indicator { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #333; font-weight: 500; }
+        .status-dot { width: 10px; height: 10px; background-color: #28a745; border-radius: 50%; display: inline-block; }
+        .status-dot.offline { background-color: #6c757d; }
     </style>
 </head>
 <body>
 
-    <div class="control-panel">
-        <h3>Driver Navigation</h3>
-        <p style="margin:0; font-size:12px; color:#666;">You will see waiting students appear on this map dynamically.</p>
-        <button id="start-btn" onclick="startTracking()">📡 Start Journey</button>
-        <button id="stop-btn" class="stop-btn" onclick="stopTracking()" style="display:none;">🛑 End Journey</button>
-        <div id="status" class="status">Status: Offline</div>
+    <div class="driver-panel">
+        <h2>Driver Navigation</h2>
+        <p>You will see waiting students appear on this map dynamically.</p>
+        <button class="end-journey-btn" onclick="endJourney()">🛑 End Journey</button>
+        <div class="status-indicator">
+            <span id="live-dot" class="status-dot"></span>
+            <span id="live-text">Broadcasting Live Location...</span>
+        </div>
     </div>
 
     <div id="map"></div>
@@ -35,88 +50,100 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
     <script>
+        // Firebase Config
         const firebaseConfig = { databaseURL: "https://shuttle-tracker-4c18f-default-rtdb.firebaseio.com" };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // Initialize Map
+        // Map setup centered on campus coordinates
         const map = L.map('map').setView([-1.3193, 36.8162], 15);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-        // Icons
-        const driverIcon = L.icon({
-            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+        // Pin Icon Assets 
+        const shuttleIcon = L.icon({
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png', // Blue for Bus
             shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-            iconSize: [25, 41], iconAnchor: [12, 41]
+            iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
         });
 
         const studentIcon = L.icon({
-            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',  // Red for Students
             shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-            iconSize: [22, 36], iconAnchor: [11, 36]
+            iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
         });
 
-        let driverWatchId = null;
-        let myMarker = null;
-        let studentMarkers = {}; // Keeps track of student pins on screen
+        let myBusMarker = null;
+        let studentMarkers = {}; // Keep track of active student markers on screen
+        let geoWatchId = null;
 
-        // 1. BROADCAST DRIVER LOCATION
-        function startTracking() {
-            if (!navigator.geolocation) return alert("GPS not supported");
-
-            document.getElementById('start-btn').disabled = true;
-            
-            driverWatchId = navigator.geolocation.watchPosition((position) => {
+        // 1. WATCH DRIVER LOCATION AND BROADCAST TO FIREBASE
+        if (navigator.geolocation) {
+            geoWatchId = navigator.geolocation.watchPosition((position) => {
                 const lat = position.coords.latitude;
                 const lon = position.coords.longitude;
 
-                db.ref('shuttles/live_bus').set({ lat: lat, lon: lon, tst: Math.floor(Date.now() / 1000) });
-
-                if (!myMarker) {
-                    myMarker = L.marker([lat, lon], { icon: driverIcon }).addTo(map).bindPopup("<b>Your Bus</b>").openPopup();
+                // Update Driver's Blue Bus Pin locally
+                if (!myBusMarker) {
+                    myBusMarker = L.marker([lat, lon], { icon: shuttleIcon }).addTo(map)
+                                   .bindPopup("<b>Your Bus</b>").openPopup();
+                    map.setView([lat, lon], 16);
                 } else {
-                    myMarker.setLatLng([lat, lon]);
+                    myBusMarker.setLatLng([lat, lon]);
                 }
-                map.setView([lat, lon], map.getZoom());
-                document.getElementById('status').innerText = "🟢 Broadcasting Live Location...";
-                document.getElementById('start-btn').style.display = "none";
-                document.getElementById('stop-btn').style.display = "block";
-            }, (err) => { alert("GPS Error: " + err.message); }, { enableHighAccuracy: true });
-        }
 
-        function stopTracking() {
-            if (driverWatchId) navigator.geolocation.clearWatch(driverWatchId);
-            db.ref('shuttles/live_bus').remove();
-            if (myMarker) map.removeLayer(myMarker);
-            myMarker = null;
-            document.getElementById('status').innerText = "Status: Offline";
-            document.getElementById('start-btn').style.display = "block";
-            document.getElementById('start-btn').disabled = false;
-            document.getElementById('stop-btn').style.display = "none";
-        }
-
-        // 2. LISTEN AND SHOW STUDENTS ON DRIVER MAP
-        db.ref('students').on('value', (snapshot) => {
-            // Clear existing student markers first to handle drop-offs/disconnects
-            for (let id in studentMarkers) {
-                map.removeLayer(studentMarkers[id]);
-            }
-            studentMarkers = {};
-
-            if (snapshot.exists()) {
-                snapshot.forEach((childSnapshot) => {
-                    const studentId = childSnapshot.key;
-                    const studentData = childSnapshot.val();
-                    
-                    if (studentData && studentData.lat && studentData.lon) {
-                        const marker = L.marker([studentData.lat, studentData.lon], { icon: studentIcon })
-                                        .addTo(map)
-                                        .bindPopup("🎒 Student Waiting Here");
-                        studentMarkers[studentId] = marker;
-                    }
+                // Push tracking telemetry straight into Firebase
+                db.ref('shuttles/live_bus').set({
+                    lat: lat,
+                    lon: lon,
+                    tst: Math.floor(Date.now() / 1000)
                 });
+            }, (err) => { console.error("GPS Tracking Error: ", err); }, { enableHighAccuracy: true });
+        } else {
+            alert("GPS services are not supported by this device.");
+        }
+
+        // 2. LISTEN DYNAMICALLY FOR BROADCASTING STUDENTS
+        db.ref('students').on('value', (snapshot) => {
+            const studentsData = snapshot.val() || {};
+            
+            // Clear out markers for students who stopped broadcasting or closed tabs
+            for (let id in studentMarkers) {
+                if (!studentsData[id]) {
+                    map.removeLayer(studentMarkers[id]);
+                    delete studentMarkers[id];
+                }
+            }
+
+            // Draw or update active students on the driver's screen
+            for (let id in studentsData) {
+                const student = studentsData[id];
+                if (student.lat && student.lon) {
+                    if (!studentMarkers[id]) {
+                        studentMarkers[id] = L.marker([student.lat, student.lon], { icon: studentIcon }).addTo(map)
+                                               .bindPopup("<b>Waiting Student</b>");
+                    } else {
+                        studentMarkers[id].setLatLng([student.lat, student.lon]);
+                    }
+                }
             }
         });
+
+        // 3. END JOURNEY FUNCTIONALITY
+        function endJourney() {
+            if (confirm("Are you sure you want to end this journey and go offline?")) {
+                // Stop location gathering engine
+                if (geoWatchId) navigator.geolocation.clearWatch(geoWatchId);
+                
+                // Erase live tracking data node from Firebase
+                db.ref('shuttles/live_bus').remove();
+                
+                // Update UI elements to reflect Offline Status
+                document.getElementById("live-dot").classList.add("offline");
+                document.getElementById("live-text").innerText = "Journey Ended. Offline.";
+                if (myBusMarker) { map.removeLayer(myBusMarker); }
+                alert("Journey closed. Your location is no longer broadcasting.");
+            }
+        }
     </script>
 </body>
 </html>

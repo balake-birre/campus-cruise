@@ -23,7 +23,7 @@
 
     <div class="status-panel">
         <h1>CampusCruise Live</h1>
-        <p id="time-status">Shuttle is currently offline.</p>
+        <p id="time-status">Locating shuttle and your position...</p>
         <button id="share-btn" class="student-toggle" onclick="toggleDriverBroadcast()">📍 Broadcast My Location to Driver</button>
     </div>
 
@@ -39,10 +39,10 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // Unique ID generated for this session's driver broadcast
+        // Unique session ID for driver broadcast
         const myUniqueId = "student_" + Math.random().toString(36).substr(2, 9);
 
-        // Center map initially around college area coordinates
+        // Initialize map (will auto-adjust as soon as GPS streams kick in)
         const map = L.map('map').setView([-1.3193, 36.8162], 15);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
@@ -67,13 +67,25 @@
         let currentLat = null;
         let currentLon = null;
 
-        // 1. AUTOMATICALLY TRACK THE STUDENT LOCALLY ON PAGE LOAD
+        // SMART FUNCTION: Auto-adjust map view to frame both GPS points perfectly
+        function autoFitBothMarkers() {
+            if (shuttleMarker && mySelfMarker) {
+                const bounds = L.latLngBounds([
+                    shuttleMarker.getLatLng(),
+                    mySelfMarker.getLatLng()
+                ]);
+                // Adds 50px padding around the edges so icons don't hit the screen borders
+                map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+            }
+        }
+
+        // GPS STREAM 1: AUTOMATIC LOCAL STUDENT TRACKING
         if (navigator.geolocation) {
             navigator.geolocation.watchPosition((position) => {
                 currentLat = position.coords.latitude;
                 currentLon = position.coords.longitude;
 
-                // Instantly display or update the student's personal Avatar Marker
+                // Plot or update the student marker locally
                 if (!mySelfMarker) {
                     mySelfMarker = L.marker([currentLat, currentLon], { icon: mySelfIcon }).addTo(map)
                                     .bindPopup("<b>You Are Here</b>").openPopup();
@@ -81,43 +93,51 @@
                     mySelfMarker.setLatLng([currentLat, currentLon]);
                 }
 
-                // If broadcasting is toggled ON, continuously stream these coordinates to the driver
+                // Auto-frame map camera to show both targets
+                autoFitBothMarkers();
+
+                // If broadcast switch is active, push data over to Firebase for the driver
                 if (isBroadcasting) {
                     db.ref('students/' + myUniqueId).set({
                         lat: currentLat,
                         lon: currentLon
                     });
                 }
-            }, (err) => { console.error("Local GPS Access Error: ", err); }, { enableHighAccuracy: true });
+            }, (err) => { console.error("Local GPS Error: ", err); }, { enableHighAccuracy: true });
         } else {
             alert("GPS services are not supported by this browser.");
         }
 
-        // 2. LISTEN TO SHUTTLE POSITION STREAM
+        // GPS STREAM 2: LIVE FIREBASE SHUTTLE TRACKING
         db.ref('shuttles/live_bus').on('value', (snapshot) => {
             const data = snapshot.val();
             if (data && data.lat && data.lon) {
                 const lat = data.lat;
                 const lng = data.lon;
                 
+                // Plot or update the shuttle marker
                 if (!shuttleMarker) {
-                    shuttleMarker = L.marker([lat, lng], { icon: shuttleIcon }).addTo(map).bindPopup("<b>Shuttle Bus</b>").openPopup();
+                    shuttleMarker = L.marker([lat, lng], { icon: shuttleIcon }).addTo(map)
+                                    .bindPopup("<b>Shuttle Bus</b>");
                 } else {
                     shuttleMarker.setLatLng([lat, lng]);
                 }
+
+                // Auto-frame map camera to show both targets
+                autoFitBothMarkers();
+
                 const timestamp = data.tst ? new Date(data.tst * 1000) : new Date();
-                document.getElementById("time-status").innerText = "Active • Updated: " + timestamp.toLocaleTimeString();
+                document.getElementById("time-status").innerText = "Bus Active • Updated: " + timestamp.toLocaleTimeString();
             } else {
                 document.getElementById("time-status").innerText = "Shuttle is currently offline.";
                 if (shuttleMarker) { map.removeLayer(shuttleMarker); shuttleMarker = null; }
             }
         });
 
-        // 3. TOGGLE BROADCAST DATA PACKETS TO THE DRIVER NODE
+        // BROADCAST TOGGLE INTERACTION
         function toggleDriverBroadcast() {
             if (!isBroadcasting) {
                 if (currentLat && currentLon) {
-                    // Send current coordinates to driver's data view immediately
                     db.ref('students/' + myUniqueId).set({
                         lat: currentLat,
                         lon: currentLon
@@ -138,7 +158,7 @@
             isBroadcasting = false;
         }
 
-        // Safety routine: Clear data path node if student closes the browser window/tab completely
+        // Clean-up node database path if window or tab session is destroyed
         window.addEventListener('beforeunload', () => {
             db.ref('students/' + myUniqueId).remove();
         });

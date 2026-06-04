@@ -46,62 +46,58 @@
         const map = L.map('map').setView([-1.3193, 36.8162], 15);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-        // Tracking layers
-        let shuttleDot = null;
-        let mySelfDot = null; 
-        let myAccuracyCircle = null; // Soft shading ring around the user
+        // CLASSIC PIN ICONS (Updated Colors)
+        const studentIcon = L.icon({
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png', // RED for student
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34],
+            shadowSize: [41, 41]
+        });
+
+        const shuttleIcon = L.icon({
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png', // BLUE for bus
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34],
+            shadowSize: [41, 41]
+        });
+
+        let shuttleMarker = null;
+        let mySelfMarker = null; 
         
         let isBroadcasting = false;
         let currentLat = null;
         let currentLon = null;
 
-        // Auto-adjust camera view to frame both dots perfectly on screen
+        // Auto-adjust camera view to frame both pins perfectly on screen together
         function autoFitBothMarkers() {
-            if (shuttleDot && mySelfDot) {
+            if (shuttleMarker && mySelfMarker) {
                 const bounds = L.latLngBounds([
-                    shuttleDot.getLatLng(),
-                    mySelfDot.getLatLng()
+                    shuttleMarker.getLatLng(),
+                    mySelfMarker.getLatLng()
                 ]);
                 map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
             }
         }
 
-        // GPS STREAM 1: AUTOMATIC LOCAL USER LOCATION DOT (BLUE GPS DOT)
+        // GPS STREAM 1: AUTOMATIC LOCAL STUDENT TRACKING (RED PIN)
         if (navigator.geolocation) {
             navigator.geolocation.watchPosition((position) => {
                 currentLat = position.coords.latitude;
                 currentLon = position.coords.longitude;
-                const accuracy = position.coords.accuracy;
 
-                // 1. Update/Create the soft accuracy outer circle
-                if (!myAccuracyCircle) {
-                    myAccuracyCircle = L.circle([currentLat, currentLon], {
-                        radius: accuracy,
-                        color: '#007bff',
-                        fillColor: '#007bff',
-                        fillOpacity: 0.15,
-                        weight: 1
-                    }).addTo(map);
+                // Create or update the Red Student Pin on the map
+                if (!mySelfMarker) {
+                    mySelfMarker = L.marker([currentLat, currentLon], { icon: studentIcon }).addTo(map)
+                                    .bindPopup("<b>You Are Here</b>").openPopup();
                 } else {
-                    myAccuracyCircle.setLatLng([currentLat, currentLon]);
-                    myAccuracyCircle.setRadius(accuracy);
+                    mySelfMarker.setLatLng([currentLat, currentLon]);
                 }
 
-                // 2. Update/Create the core solid Blue Location Dot
-                if (!mySelfDot) {
-                    mySelfDot = L.circleMarker([currentLat, currentLon], {
-                        radius: 8,
-                        fillColor: '#007bff',
-                        color: '#ffffff', // White border ring
-                        weight: 2,
-                        opacity: 1,
-                        fillOpacity: 0.9
-                    }).addTo(map).bindPopup("<b>You Are Here</b>").openPopup();
-                } else {
-                    mySelfDot.setLatLng([currentLat, currentLon]);
-                }
-
-                // Run camera framing
+                // Run auto-framing layout check
                 autoFitBothMarkers();
 
                 // Stream variables to Firebase if broadcast switch is active
@@ -116,35 +112,29 @@
             alert("GPS services are not supported by this browser.");
         }
 
-        // GPS STREAM 2: LIVE SHUTTLE BUS LOCATION DOT (GREEN TRACKING DOT)
+        // GPS STREAM 2: LIVE FIREBASE SHUTTLE TRACKING (BLUE PIN)
         db.ref('shuttles/live_bus').on('value', (snapshot) => {
             const data = snapshot.val();
             if (data && data.lat && data.lon) {
                 const lat = data.lat;
                 const lng = data.lon;
                 
-                // Update/Create the clean Green Bus tracking dot
-                if (!shuttleDot) {
-                    shuttleDot = L.circleMarker([lat, lng], {
-                        radius: 9,
-                        fillColor: '#28a745', // Emerald Green
-                        color: '#ffffff',     // White border ring
-                        weight: 2,
-                        opacity: 1,
-                        fillOpacity: 0.9
-                    }).addTo(map).bindPopup("<b>Shuttle Bus</b>");
+                // Create or update the Blue Shuttle Pin on the map
+                if (!shuttleMarker) {
+                    shuttleMarker = L.marker([lat, lng], { icon: shuttleIcon }).addTo(map)
+                                    .bindPopup("<b>Shuttle Bus</b>");
                 } else {
-                    shuttleDot.setLatLng([lat, lng]);
+                    shuttleMarker.setLatLng([lat, lng]);
                 }
 
-                // Run camera framing
+                // Run auto-framing layout check
                 autoFitBothMarkers();
 
                 const timestamp = data.tst ? new Date(data.tst * 1000) : new Date();
                 document.getElementById("time-status").innerText = "Bus Active • Updated: " + timestamp.toLocaleTimeString();
             } else {
                 document.getElementById("time-status").innerText = "Shuttle is currently offline.";
-                if (shuttleDot) { map.removeLayer(shuttleDot); shuttleDot = null; }
+                if (shuttleMarker) { map.removeLayer(shuttleMarker); shuttleMarker = null; }
             }
         });
 

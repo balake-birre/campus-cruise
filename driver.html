@@ -3,90 +3,120 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CampusCruise - Driver Console</title>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <title>CampusCruise - Driver Map Console</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body { font-family: Arial, sans-serif; text-align: center; background: #f4f6f9; padding: 40px 20px; }
-        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); max-width: 400px; margin: 0 auto; }
-        button { background: #28a745; color: white; border: none; padding: 15px 30px; font-size: 18px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; margin-top: 20px; }
-        button:disabled { background: #ccc; }
-        .status { margin-top: 20px; font-size: 16px; color: #555; font-weight: bold; }
-        .offline-btn { background: #dc3545; margin-top: 10px; }
+        body, html { margin: 0; padding: 0; height: 100%; font-family: Arial, sans-serif; }
+        #map { height: 100%; width: 100%; }
+        .control-panel {
+            position: absolute; top: 20px; left: 20px; z-index: 1000;
+            background: white; padding: 15px; border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2); max-width: 280px;
+        }
+        button { background: #28a745; color: white; border: none; padding: 12px; font-size: 16px; border-radius: 6px; cursor: pointer; width: 100%; font-weight: bold; margin-top: 10px; }
+        .stop-btn { background: #dc3545; }
+        .status { font-size: 13px; color: #555; margin-top: 8px; font-weight: bold; }
     </style>
 </head>
 <body>
 
-    <div class="card">
-        <h2>Driver Control Panel</h2>
-        <p>Tap below to start broadcasting the shuttle location to students.</p>
-        
+    <div class="control-panel">
+        <h3>Driver Navigation</h3>
+        <p style="margin:0; font-size:12px; color:#666;">You will see waiting students appear on this map dynamically.</p>
         <button id="start-btn" onclick="startTracking()">📡 Start Journey</button>
-        <button id="stop-btn" class="offline-btn" onclick="stopTracking()" style="display:none;">🛑 End Journey</button>
-        
+        <button id="stop-btn" class="stop-btn" onclick="stopTracking()" style="display:none;">🛑 End Journey</button>
         <div id="status" class="status">Status: Offline</div>
     </div>
 
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
     <script>
-        // Firebase Setup
-        const firebaseConfig = {
-            databaseURL: "https://shuttle-tracker-4c18f-default-rtdb.firebaseio.com"
-        };
+        const firebaseConfig = { databaseURL: "https://shuttle-tracker-4c18f-default-rtdb.firebaseio.com" };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        let watchId = null;
+        // Initialize Map
+        const map = L.map('map').setView([-1.3193, 36.8162], 15);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
+        // Icons
+        const driverIcon = L.icon({
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+            iconSize: [25, 41], iconAnchor: [12, 41]
+        });
+
+        const studentIcon = L.icon({
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+            iconSize: [22, 36], iconAnchor: [11, 36]
+        });
+
+        let driverWatchId = null;
+        let myMarker = null;
+        let studentMarkers = {}; // Keeps track of student pins on screen
+
+        // 1. BROADCAST DRIVER LOCATION
         function startTracking() {
-            if (!navigator.geolocation) {
-                document.getElementById('status').innerText = "Error: GPS not supported on this phone.";
-                return;
-            }
+            if (!navigator.geolocation) return alert("GPS not supported");
 
             document.getElementById('start-btn').disabled = true;
-            document.getElementById('start-btn').innerText = "Connecting GPS...";
-
-            // Watch the phone's movement using native browser location services
-            watchId = navigator.geolocation.watchPosition((position) => {
+            
+            driverWatchId = navigator.geolocation.watchPosition((position) => {
                 const lat = position.coords.latitude;
                 const lon = position.coords.longitude;
 
-                // Send a clean, simple data package straight to Firebase
-                db.ref('shuttles/live_bus').set({
-                    lat: lat,
-                    lon: lon,
-                    tst: Math.floor(Date.now() / 1000)
-                }).then(() => {
-                    document.getElementById('status').innerHTML = `🟢 Broadcasting Live!<br><small>Lat: ${lat.toFixed(4)}, Lon: ${lon.toFixed(4)}</small>`;
-                    document.getElementById('start-btn').style.display = "none";
-                    document.getElementById('stop-btn').style.display = "block";
-                }).catch((err) => {
-                    document.getElementById('status').innerText = "Firebase Error: " + err.message;
-                });
+                db.ref('shuttles/live_bus').set({ lat: lat, lon: lon, tst: Math.floor(Date.now() / 1000) });
 
-            }, (error) => {
-                document.getElementById('status').innerText = "GPS Error: " + error.message;
-                document.getElementById('start-btn').disabled = false;
-                document.getElementById('start-btn').innerText = "📡 Start Journey";
-            }, {
-                enableHighAccuracy: true, // Forces phone to use precise satellite GPS instead of generic cell towers
-                maximumAge: 0
-            });
+                if (!myMarker) {
+                    myMarker = L.marker([lat, lon], { icon: driverIcon }).addTo(map).bindPopup("<b>Your Bus</b>").openPopup();
+                } else {
+                    myMarker.setLatLng([lat, lon]);
+                }
+                map.setView([lat, lon], map.getZoom());
+                document.getElementById('status').innerText = "🟢 Broadcasting Live Location...";
+                document.getElementById('start-btn').style.display = "none";
+                document.getElementById('stop-btn').style.display = "block";
+            }, (err) => { alert("GPS Error: " + err.message); }, { enableHighAccuracy: true });
         }
 
         function stopTracking() {
-            if (watchId) {
-                navigator.geolocation.clearWatch(watchId);
-                watchId = null;
-            }
-            // Let students know the shuttle is offline
+            if (driverWatchId) navigator.geolocation.clearWatch(driverWatchId);
             db.ref('shuttles/live_bus').remove();
-            document.getElementById('status').innerText = "Status: Offline (Journey Ended)";
+            if (myMarker) map.removeLayer(myMarker);
+            myMarker = null;
+            document.getElementById('status').innerText = "Status: Offline";
             document.getElementById('start-btn').style.display = "block";
             document.getElementById('start-btn').disabled = false;
-            document.getElementById('start-btn').innerText = "📡 Start Journey";
             document.getElementById('stop-btn').style.display = "none";
         }
+
+        // 2. LISTEN AND SHOW STUDENTS ON DRIVER MAP
+        db.ref('students').on('value', (snapshot) => {
+            // Clear existing student markers first to handle drop-offs/disconnects
+            for (let id in studentMarkers) {
+                map.removeLayer(studentMarkers[id]);
+            }
+            studentMarkers = {};
+
+            if (snapshot.exists()) {
+                snapshot.forEach((childSnapshot) => {
+                    const studentId = childSnapshot.key;
+                    const studentData = childSnapshot.val();
+                    
+                    if (studentData && studentData.lat && studentData.lon) {
+                        const marker = L.marker([studentData.lat, studentData.lon], { icon: studentIcon })
+                                        .addTo(map)
+                                        .bindPopup("🎒 Student Waiting Here");
+                        studentMarkers[studentId] = marker;
+                    }
+                });
+            }
+        });
     </script>
 </body>
 </html>

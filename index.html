@@ -14,7 +14,9 @@
             box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 280px;
         }
         h1 { margin: 0 0 5px 0; font-size: 18px; color: #333; }
-        p { margin: 0; font-size: 13px; color: #666; }
+        p { margin: 0; font-size: 13px; color: #666; margin-bottom: 10px; }
+        .student-toggle { background: #007bff; color: white; border: none; padding: 10px; font-weight: bold; border-radius: 5px; width: 100%; cursor: pointer; }
+        .sharing-active { background: #dc3545; }
     </style>
 </head>
 <body>
@@ -22,6 +24,7 @@
     <div class="status-panel">
         <h1>CampusCruise Live</h1>
         <p id="time-status">Shuttle is currently offline.</p>
+        <button id="share-btn" class="student-toggle" onclick="toggleStudentShare()">📍 Share My Position with Driver</button>
     </div>
 
     <div id="map"></div>
@@ -31,55 +34,77 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
     <script>
-        // Firebase Setup
-        const firebaseConfig = {
-            databaseURL: "https://shuttle-tracker-4c18f-default-rtdb.firebaseio.com"
-        };
+        const firebaseConfig = { databaseURL: "https://shuttle-tracker-4c18f-default-rtdb.firebaseio.com" };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // Map setup centered near college/Wilson Airport area
+        // Unique ID for this specific student browser session
+        const myUniqueId = "student_" + Math.random().toString(36).substr(2, 9);
+
         const map = L.map('map').setView([-1.3193, 36.8162], 15);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors'
-        }).addTo(map);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
         const shuttleIcon = L.icon({
             iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
             shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-            iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+            iconSize: [25, 41], iconAnchor: [12, 41]
         });
 
         let shuttleMarker = null;
+        let studentWatchId = null;
+        let isSharing = false;
 
-        // Listen directly to the single row created by the driver console
+        // 1. LISTEN TO SHUTTLE
         db.ref('shuttles/live_bus').on('value', (snapshot) => {
             const data = snapshot.val();
-            
             if (data && data.lat && data.lon) {
                 const lat = data.lat;
                 const lng = data.lon;
                 
                 if (!shuttleMarker) {
-                    shuttleMarker = L.marker([lat, lng], { icon: shuttleIcon }).addTo(map)
-                                     .bindPopup("<b>Campus Shuttle</b><br>Live Tracking").openPopup();
+                    shuttleMarker = L.marker([lat, lng], { icon: shuttleIcon }).addTo(map).bindPopup("<b>Shuttle Bus</b>").openPopup();
                 } else {
                     shuttleMarker.setLatLng([lat, lng]);
                 }
-                
-                // Read exact phone generation time
                 const timestamp = data.tst ? new Date(data.tst * 1000) : new Date();
-                document.getElementById("time-status").innerText = "Active • Last updated: " + timestamp.toLocaleTimeString();
-                
-                // Pan map smoothly to the driver's current coordinates
-                map.setView([lat, lng], map.getZoom());
+                document.getElementById("time-status").innerText = "Active • Updated: " + timestamp.toLocaleTimeString();
             } else {
                 document.getElementById("time-status").innerText = "Shuttle is currently offline.";
-                if (shuttleMarker) {
-                    map.removeLayer(shuttleMarker);
-                    shuttleMarker = null;
-                }
+                if (shuttleMarker) { map.removeLayer(shuttleMarker); shuttleMarker = null; }
             }
+        });
+
+        // 2. TOGGLE SHARING STUDENT POSITION TO FIREBASE
+        function toggleStudentShare() {
+            if (!isSharing) {
+                if (!navigator.geolocation) return alert("GPS not available");
+
+                studentWatchId = navigator.geolocation.watchPosition((position) => {
+                    db.ref('students/' + myUniqueId).set({
+                        lat: position.coords.latitude,
+                        lon: position.coords.longitude
+                    });
+                }, (err) => { console.log(err); }, { enableHighAccuracy: true });
+
+                document.getElementById('share-btn').innerText = "🛑 Stop Sharing Location";
+                document.getElementById('share-btn').classList.add('sharing-active');
+                isSharing = true;
+            } else {
+                stopSharing();
+            }
+        }
+
+        function stopSharing() {
+            if (studentWatchId) navigator.geolocation.clearWatch(studentWatchId);
+            db.ref('students/' + myUniqueId).remove();
+            document.getElementById('share-btn').innerText = "📍 Share My Position with Driver";
+            document.getElementById('share-btn').classList.remove('sharing-active');
+            isSharing = false;
+        }
+
+        // Clean up database if student closes tab completely
+        window.addEventListener('beforeunload', () => {
+            db.ref('students/' + myUniqueId).remove();
         });
     </script>
 </body>

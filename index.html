@@ -3,161 +3,76 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CampusCruise Live Shuttle Tracker</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <title>CampusCruise - Welcome</title>
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; font-family: Arial, sans-serif; }
-        #map { height: 100%; width: 100%; }
-        .status-panel {
-            position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: white; padding: 15px; border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 280px;
+        body, html {
+            margin: 0; padding: 0; height: 100%;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #f8f9fa;
+            display: flex; justify-content: center; align-items: center;
         }
-        h1 { margin: 0 0 5px 0; font-size: 18px; color: #333; }
-        p { margin: 0; font-size: 13px; color: #666; margin-bottom: 10px; }
-        .student-toggle { background: #007bff; color: white; border: none; padding: 10px; font-weight: bold; border-radius: 5px; width: 100%; cursor: pointer; transition: background 0.2s; }
-        .sharing-active { background: #dc3545; }
+        .main-container {
+            width: 90%; max-width: 400px;
+            background: white; padding: 30px 20px;
+            border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+            text-align: center;
+        }
+        h1 { margin: 0 0 8px 0; font-size: 26px; color: #212529; font-weight: 700; }
+        .subtitle { margin: 0 0 30px 0; font-size: 14px; color: #6c757d; }
+        
+        /* Dashboard Selection Cards */
+        .choice-card {
+            display: block; text-decoration: none; text-align: left;
+            background: #ffffff; padding: 18px; margin-bottom: 16px;
+            border-radius: 12px; border: 2px solid #e9ecef;
+            transition: all 0.2s ease-in-out; cursor: pointer;
+        }
+        /* Transit Card Hover/Active State */
+        .choice-card.transit-card:hover {
+            border-color: #007bff; background: #f0f7ff;
+            transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,123,255,0.1);
+        }
+        /* Gaming Card Hover/Active State */
+        .choice-card.game-card:hover {
+            border-color: #6f42c1; background: #f6f2ff;
+            transform: translateY(-2px); box-shadow: 0 4px 12px rgba(111,66,193,0.1);
+        }
+        
+        /* Inner Card Layout Elements */
+        .card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+        .card-icon { font-size: 24px; }
+        .card-title { font-size: 16px; font-weight: bold; }
+        .transit-card .card-title { color: #007bff; }
+        .game-card .card-title { color: #6f42c1; }
+        .card-desc { font-size: 12px; color: #495057; line-height: 1.4; padding-left: 36px; }
     </style>
 </head>
 <body>
 
-    <div class="status-panel">
-        <h1>CampusCruise Live</h1>
-        <p id="time-status">Locating shuttle and your position...</p>
-        <button id="share-btn" class="student-toggle" onclick="toggleDriverBroadcast()">📍 Broadcast My Location to Driver</button>
+    <div class="main-container">
+        <h1>CampusCruise</h1>
+        <p class="subtitle">Select an operation mode to continue</p>
+
+        <a href="transit.html" class="choice-card transit-card">
+            <div class="card-header">
+                <span class="card-icon">🚌</span>
+                <span class="card-title">Drivers Location</span>
+            </div>
+            <div class="card-desc">
+                View the live shuttle location marker on the map and broadcast your positioning coordinates back to the driver.
+            </div>
+        </a>
+
+        <a href="game.html" class="choice-card game-card">
+            <div class="card-header">
+                <span class="card-icon">🎮</span>
+                <span class="card-title">Students Game Hub</span>
+            </div>
+            <div class="card-desc">
+                Join active map-based multiplayer mini-games including Digital Fugitive loops and Geo-Fencing Land Grab checkpoints.
+            </div>
+        </a>
     </div>
 
-    <div id="map"></div>
-
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-
-    <script>
-        // Firebase Config
-        const firebaseConfig = { databaseURL: "https://shuttle-tracker-4c18f-default-rtdb.firebaseio.com" };
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.database();
-
-        // Unique session token generation for the student
-        const myUniqueId = "student_" + Math.random().toString(36).substr(2, 9);
-
-        const map = L.map('map').setView([-1.3193, 36.8162], 15);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-
-        // Pin Icons Config
-        const studentIcon = L.icon({
-            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png', // RED for Student
-            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-            iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
-        });
-
-        const shuttleIcon = L.icon({
-            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png', // BLUE for Bus
-            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-            iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
-        });
-
-        let shuttleMarker = null;
-        let mySelfMarker = null; 
-        
-        let isBroadcasting = false;
-        let currentLat = null;
-        let currentLon = null;
-
-        // Auto-frames map boundaries whenever data objects migrate coordinates
-        function autoFitBothMarkers() {
-            if (shuttleMarker && mySelfMarker) {
-                const bounds = L.latLngBounds([
-                    shuttleMarker.getLatLng(),
-                    mySelfMarker.getLatLng()
-                ]);
-                map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
-            }
-        }
-
-        // 1. ACQUIRE LOCAL STUDENT TELEMETRY (Render Local Red Pin)
-        if (navigator.geolocation) {
-            navigator.geolocation.watchPosition((position) => {
-                currentLat = position.coords.latitude;
-                currentLon = position.coords.longitude;
-
-                if (!mySelfMarker) {
-                    mySelfMarker = L.marker([currentLat, currentLon], { icon: studentIcon, zIndexOffset: 1000 }).addTo(map)
-                                    .bindPopup("<b>You Are Here</b>").openPopup();
-                } else {
-                    mySelfMarker.setLatLng([currentLat, currentLon]);
-                }
-
-                autoFitBothMarkers();
-
-                // If broadcast switch is toggled true, write updates directly into database path
-                if (isBroadcasting) {
-                    db.ref('students/' + myUniqueId).set({
-                        lat: currentLat,
-                        lon: currentLon
-                    });
-                }
-            }, (err) => { console.error("GPS Error: ", err); }, { enableHighAccuracy: true });
-        } else {
-            alert("GPS services are not supported by this browser.");
-        }
-
-        // 2. LISTEN DYNAMICALLY TO SHUTTLE BROADCAST DATA (Render Blue Pin)
-        db.ref('shuttles/live_bus').on('value', (snapshot) => {
-            const data = snapshot.val();
-            if (data && data.lat && data.lon) {
-                const lat = data.lat;
-                const lng = data.lon;
-                
-                if (!shuttleMarker) {
-                    shuttleMarker = L.marker([lat, lng], { icon: shuttleIcon }).addTo(map)
-                                    .bindPopup("<b>Shuttle Bus</b>");
-                } else {
-                    shuttleMarker.setLatLng([lat, lng]);
-                }
-
-                autoFitBothMarkers();
-
-                const timestamp = data.tst ? new Date(data.tst * 1000) : new Date();
-                document.getElementById("time-status").innerText = "Bus Active • Updated: " + timestamp.toLocaleTimeString();
-            } else {
-                document.getElementById("time-status").innerText = "Shuttle is currently offline.";
-                if (shuttleMarker) { map.removeLayer(shuttleMarker); shuttleMarker = null; }
-            }
-        });
-
-        // 3. BROADCAST TRIGGER INTERACTION
-        function toggleDriverBroadcast() {
-            const btn = document.getElementById('share-btn');
-            if (!isBroadcasting) {
-                isBroadcasting = true;
-                btn.innerText = "🛑 Stop Broadcasting Location";
-                btn.classList.add('sharing-active');
-                
-                if (currentLat && currentLon) {
-                    db.ref('students/' + myUniqueId).set({
-                        lat: currentLat,
-                        lon: currentLon
-                    });
-                }
-            } else {
-                stopBroadcasting();
-            }
-        }
-
-        function stopBroadcasting() {
-            isBroadcasting = false;
-            const btn = document.getElementById('share-btn');
-            db.ref('students/' + myUniqueId).remove();
-            btn.innerText = "📍 Broadcast My Location to Driver";
-            btn.classList.remove('sharing-active');
-        }
-
-        // Purge leftover node data if browser tab session gets wiped out
-        window.addEventListener('beforeunload', () => {
-            db.ref('students/' + myUniqueId).remove();
-        });
-    </script>
 </body>
 </html>
